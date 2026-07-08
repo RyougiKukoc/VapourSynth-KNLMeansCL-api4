@@ -22,14 +22,11 @@ def main() -> int:
     pc.write_text(
         "\n".join(
             [
-                f"prefix={pkg.as_posix()}",
-                "includedir=${prefix}/include",
-                "",
                 "Name: vapoursynth",
                 "Description: VapourSynth R77 API4 headers from wheel",
                 "Version: 77",
                 "Libs:",
-                "Cflags: -I${includedir}",
+                f"Cflags: -I{include.as_posix()}",
                 "",
             ]
         ),
