@@ -51,6 +51,10 @@ def split_path(value: str) -> list[Path]:
 
 def default_search_dirs() -> list[Path]:
     dirs = split_path(os.environ.get("PATH", ""))
+    runner_temp = os.environ.get("RUNNER_TEMP")
+    if runner_temp:
+        runner_msys2 = Path(runner_temp) / "msys64"
+        dirs.extend([runner_msys2 / "ucrt64" / "bin", runner_msys2 / "usr" / "bin"])
     for candidate in [
         Path(r"C:\msys64\ucrt64\bin"),
         Path(r"C:\msys64\usr\bin"),

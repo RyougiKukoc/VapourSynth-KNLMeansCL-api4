@@ -69,13 +69,13 @@ jobs:
       - name: Package artifact
         shell: cmd
         run: >-
-          set "PATH=C:\msys64\ucrt64\bin;C:\msys64\usr\bin;%PATH%" &&
+          set "PATH=%RUNNER_TEMP%\msys64\ucrt64\bin;%RUNNER_TEMP%\msys64\usr\bin;%PATH%" &&
           "%pythonLocation%\python.exe" tools\ci_package_msys2.py
           --build-dir builddir
           --dist-dir dist\msys2-ucrt64
-          --search-dir C:\msys64\ucrt64\bin
-          --search-dir C:\msys64\usr\bin
-          --objdump C:\msys64\ucrt64\bin\objdump.exe
+          --search-dir "%RUNNER_TEMP%\msys64\ucrt64\bin"
+          --search-dir "%RUNNER_TEMP%\msys64\usr\bin"
+          --objdump "%RUNNER_TEMP%\msys64\ucrt64\bin\objdump.exe"
           --clean
 
       - name: Smoke-load artifact
