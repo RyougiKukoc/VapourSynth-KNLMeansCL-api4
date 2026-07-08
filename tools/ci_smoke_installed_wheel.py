@@ -15,6 +15,9 @@ NO_DEVICE_MARKERS = (
     "cl_device_not_found",
     "device not found",
     "cl_platform_not_found",
+    "ocl_utils_unknown_error",
+    "oclutilsgetplaformdeviceids",
+    "oclutilsgetplatformdeviceids",
 )
 
 
