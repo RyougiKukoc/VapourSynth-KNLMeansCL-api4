@@ -16,21 +16,21 @@
 *    along with KNLMeansCL. If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef NLM_VAPOURSYNTH_H
-#define NLM_VAPOURSYNTH_H
+#ifndef NLM_VAPOURSYNTH4_H
+#define NLM_VAPOURSYNTH4_H
 
 #include "NLMKernel.h"
 #include "shared/ocl_utils.h"
 
-#include <VapourSynth.h>
-#include <VSHelper.h>
+#include <VapourSynth4.h>
+#include <VSHelper4.h>
 
-#ifdef VAPOURSYNTH_H
+#ifdef VAPOURSYNTH4_H
 
 typedef struct NLMVapoursynth {
 
 public:
-    VSNodeRef *node, *knot;
+    VSNode *node, *knot;
     const VSVideoInfo *vi;
     int64_t d, a, s, wmode, ocl_id, ocl_x, ocl_y, ocl_r, info;
     double wref, h;
@@ -61,6 +61,6 @@ public:
 
 }NLMVapoursynth;
 
-#endif //__VAPOURSYNTH_H__
+#endif //__VAPOURSYNTH4_H__
 
-#endif //__NLM_VAPOURSYNTH_H__
+#endif //__NLM_VAPOURSYNTH4_H__

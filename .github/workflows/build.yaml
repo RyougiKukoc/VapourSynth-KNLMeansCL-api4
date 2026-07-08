@@ -1,79 +1,171 @@
-name: Build for Windows
+name: Build Windows MSYS2
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    strategy:
-      matrix:
-        platform: [ windows-latest ]
-        arch: [ x64 ]
-    runs-on: ${{ matrix.platform }}
+    name: Build Windows UCRT64
+    runs-on: windows-2025
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
     steps:
-    - uses: actions/checkout@v2
-      with:
-        submodules: 'recursive'
+      - name: Checkout
+        uses: actions/checkout@v5
 
-    - name: Run vcpkg
-      uses: lukka/run-vcpkg@v4
-      if: steps.cache-fftw3.outputs.cache-hit != 'true'
-      with:
-        vcpkgArguments: 'opencl:x64-windows boost-filesystem:x64-windows-static boost-system:x64-windows-static'
-        vcpkgDirectory: '${{ github.workspace }}/vcpkg'
-        vcpkgGitCommitId: 5568f110b509a9fd90711978a7cb76bae75bb092 # 2021.05.12 release
+      - name: Set up CPython
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
-#    - name: Upload vcpkg artifact
-#      uses: actions/upload-artifact@v2
-#      with:
-#        name: vcpkg-${{matrix.arch}}
-#        path: |
-#          ${{ github.workspace }}/vcpkg/installed
+      - name: Install Python build tools
+        shell: cmd
+        run: >-
+          "%pythonLocation%\python.exe" -m pip install --upgrade pip
+          build hatchling packaging meson ninja VapourSynth==77
 
-    - name: Setup Python
-      uses: actions/setup-python@v1
-      with:
-        python-version: '3.x'
-    - name: install meson and ninja
-      run: pip install meson ninja
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-meson
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-boost
+            mingw-w64-ucrt-x86_64-opencl-headers
+            mingw-w64-ucrt-x86_64-opencl-icd
 
-    - name: download VS headers and patch header location
-      shell: bash
-      run: |
-        git clone https://github.com/AmusementClub/vapoursynth-classic --depth=1 --branch doodle2 vapoursynth
-        cp vapoursynth/include/*.h KNLMeansCL/
-        sed -i -e '/#include <V/y|<>|""|' KNLMeansCL/NLMVapoursynth.h
+      - name: Prepare VapourSynth pkg-config
+        shell: cmd
+        run: >-
+          "%pythonLocation%\python.exe" tools\ci_prepare_vapoursynth_pc.py
 
-    - name: copy avisynth header and patch header location
-      shell: bash
-      run: |
-        mv KNLMeansCL/avisynth/* KNLMeansCL/
-        sed -i -e '/# *include <avisynth/y|<>|""|' KNLMeansCL/NLMAvisynth.h
-        sed -i -e '/# *include <avs/y|<>|""|' KNLMeansCL/avisynth.h
+      - name: Meson setup
+        run: |
+          export PKG_CONFIG_PATH="$(cygpath -u "$GITHUB_WORKSPACE")/_ci/pkgconfig:/ucrt64/lib/pkgconfig"
+          meson setup builddir --backend ninja --buildtype release
 
-    - name: setup MS dev commands
-      uses: ilammy/msvc-dev-cmd@v1
-      with:
-        arch: ${{ matrix.arch }}
+      - name: Meson compile
+        run: ninja -C builddir -v
 
-    - name: Install pkg-config lite
-      run: choco install pkgconfiglite
+      - name: Package artifact
+        shell: cmd
+        run: >-
+          set "PATH=C:\msys64\ucrt64\bin;C:\msys64\usr\bin;%PATH%" &&
+          "%pythonLocation%\python.exe" tools\ci_package_msys2.py
+          --build-dir builddir
+          --dist-dir dist\msys2-ucrt64
+          --search-dir C:\msys64\ucrt64\bin
+          --search-dir C:\msys64\usr\bin
+          --objdump C:\msys64\ucrt64\bin\objdump.exe
+          --clean
 
-    - name: Meson setup
-      run: meson setup builddir/ -Db_vscrt=mt
-      env:
-        BOOST_ROOT: ${{ github.workspace }}/vcpkg/installed/x64-windows-static
-        OPENCL_ROOT: ${{ github.workspace }}/vcpkg/installed/x64-windows
-      #env:
-      #  CXX: clang-cl
-      #  CXXFLAGS: "-mavx -mfma -Xclang -ffast-math"
+      - name: Smoke-load artifact
+        shell: cmd
+        run: >-
+          "%pythonLocation%\python.exe" tools\smoke_load_artifact.py
+          --artifact-dir dist\msys2-ucrt64
+          --exercise-filter
 
-    - name: Meson compile
-      run: meson compile -C builddir/ -v
+      - name: Smoke-load artifact through manifest autoload
+        shell: cmd
+        run: >-
+          "%pythonLocation%\python.exe" tools\smoke_load_artifact.py
+          --artifact-dir dist\msys2-ucrt64
+          --autoload
+          --exercise-filter
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: release-${{matrix.arch}}
-        path: |
-          builddir/*.dll
+      - name: Pack release zip
+        shell: cmd
+        run: >-
+          "%pythonLocation%\python.exe" tools\package_plugin_zip.py
+          --input-dir dist\msys2-ucrt64
+          --output dist\knlmeanscl-msys2-ucrt64.zip
 
+      - name: Smoke-load release zip
+        shell: cmd
+        run: >-
+          "%pythonLocation%\python.exe" tools\smoke_load_artifact.py
+          --artifact-zip dist\knlmeanscl-msys2-ucrt64.zip
+          --exercise-filter
+
+      - name: Build wheel from local prebuilt package
+        shell: cmd
+        env:
+          KNLMEANSCL_PREBUILT_URL: ${{ github.workspace }}\dist\knlmeanscl-msys2-ucrt64.zip
+        run: >-
+          "%pythonLocation%\python.exe" -m build --wheel --no-isolation --outdir dist\wheels
+
+      - name: Install built wheel
+        shell: cmd
+        run: >-
+          for %%I in (dist\wheels\*.whl) do "%pythonLocation%\python.exe" -m pip install --force-reinstall "%%~fI"
+
+      - name: Smoke test installed wheel
+        shell: cmd
+        run: >-
+          "%pythonLocation%\python.exe" tools\ci_smoke_installed_wheel.py --exercise-filter
+
+      - name: Smoke test source install with prebuilt release asset
+        shell: cmd
+        env:
+          KNLMEANSCL_PREBUILT_URL: ${{ github.workspace }}\dist\knlmeanscl-msys2-ucrt64.zip
+        run: |
+          "%pythonLocation%\python.exe" -m pip uninstall -y vapoursynth-knlm
+          "%pythonLocation%\python.exe" -m pip install --force-reinstall --no-deps --no-build-isolation -v .
+          "%pythonLocation%\python.exe" tools\ci_smoke_installed_wheel.py --exercise-filter
+
+      - name: Upload plugin package
+        uses: actions/upload-artifact@v7
+        with:
+          name: knlmeanscl-msys2-ucrt64
+          path: dist/msys2-ucrt64
+
+      - name: Upload release zip artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: knlmeanscl-release-assets
+          path: |
+            dist/knlmeanscl-msys2-ucrt64.zip
+            dist/wheels/*.whl
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: vapoursynth-knlm-wheel-win64
+          path: dist/wheels/*.whl
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          $tag = $env:RELEASE_TAG
+          $assets = @("dist\knlmeanscl-msys2-ucrt64.zip")
+          $assets += Get-ChildItem dist\wheels\*.whl | Select-Object -ExpandProperty FullName
+          & cmd.exe /d /c "gh release view $tag --repo $env:GITHUB_REPOSITORY >NUL 2>NUL"
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release create $tag $assets --title $tag --notes "Automated MSYS2/UCRT64 build." --repo $env:GITHUB_REPOSITORY
+          }

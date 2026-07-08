@@ -260,3 +260,15 @@ paket-files/
 
 # junk
 .DS_Store
+
+# Local Meson/API migration outputs
+/builddir/
+/build-api*/
+/dist/
+/_ci/
+/_deps/
+/verification*/
+/build-wheel*/
+/vapoursynth/
+__pycache__/
+tools/__pycache__/

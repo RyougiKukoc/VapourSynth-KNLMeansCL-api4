@@ -4,14 +4,11 @@ project('KNLMeansCL',
         license : 'GPL-3',
         version : '1.1.1')
 
-if build_machine.system() == 'windows'
-  deps = []
-  install_dir = 'installed'  # dummy
-else
-  vapoursynth = dependency('vapoursynth')
-  install_dir = join_paths(vapoursynth.get_pkgconfig_variable('libdir'), 'vapoursynth')
-  deps = [vapoursynth]
-endif
+add_project_arguments('-DCL_TARGET_OPENCL_VERSION=120', language : 'cpp')
+
+vapoursynth = dependency('vapoursynth')
+install_dir = join_paths(vapoursynth.get_pkgconfig_variable('libdir'), 'vapoursynth')
+deps = [vapoursynth]
 
 opencl_dep = dependency('OpenCL', required : false)
 if not opencl_dep.found()
@@ -39,5 +36,6 @@ library(
     'knlmeanscl',
     src,
     dependencies : deps,
+    include_directories : include_directories('KNLMeansCL/avisynth'),
     install_dir : install_dir,
     install : true)
