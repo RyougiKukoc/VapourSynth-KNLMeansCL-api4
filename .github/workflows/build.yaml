@@ -266,13 +266,15 @@ jobs:
         run: |
           set -euxo pipefail
           tag="$GITHUB_REF_NAME"
-          find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
+          mapfile -t assets < <(find release-assets -type f -print | sort)
+          test "${#assets[@]}" -eq 4
+          printf '%s\n' "${assets[@]##*/}" | sort
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$tag" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$tag" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$tag" release-assets/* --title "$tag" --notes "Automated Windows and Linux API4 release." --repo "$GITHUB_REPOSITORY"
+            gh release create "$tag" "${assets[@]}" --title "$tag" --notes "Automated Windows and Linux API4 release." --repo "$GITHUB_REPOSITORY"
           fi
-          expected=$(find release-assets -maxdepth 1 -type f -printf '%f\n' | sort)
+          expected=$(printf '%s\n' "${assets[@]##*/}" | sort)
           actual=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | sort)
           test "$expected" = "$actual"
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,assets
