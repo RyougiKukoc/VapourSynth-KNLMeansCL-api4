@@ -167,7 +167,7 @@ jobs:
           python tools/check_package_layout.py \
             dist/release-assets-linux/knlmeanscl-linux-x86_64.zip \
             --plugin knlmeanscl.so \
-            --required libOpenCL.so.1 \
+            --required libOpenCL.so.1
           test -f dist/linux-x86_64/knlmeanscl/libOpenCL.so.1
           test -f dist/linux-x86_64/knlmeanscl/libstdc++.so.6
           test -f dist/linux-x86_64/knlmeanscl/libgcc_s.so.1
