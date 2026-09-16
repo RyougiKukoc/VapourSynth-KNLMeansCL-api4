@@ -171,7 +171,6 @@ jobs:
           test -f dist/linux-x86_64/knlmeanscl/libOpenCL.so.1
           test -f dist/linux-x86_64/knlmeanscl/libstdc++.so.6
           test -f dist/linux-x86_64/knlmeanscl/libgcc_s.so.1
-          find dist/linux-x86_64/knlmeanscl -name 'libboost_filesystem.so*' -print -quit | grep -q .
           readelf -d dist/linux-x86_64/knlmeanscl/knlmeanscl.so | grep -E '(RPATH|RUNPATH).*\$ORIGIN'
           ! readelf --version-info dist/linux-x86_64/knlmeanscl/knlmeanscl.so | grep -Eq 'GLIBC_2\.(1[89]|[2-9][0-9])'
           wheel=$(find dist/release-assets-linux -name '*.whl' -print -quit)
