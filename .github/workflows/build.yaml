@@ -145,6 +145,7 @@ jobs:
                 VapourSynth -d _deps/vapoursynth-wheel
               unzip -q _deps/vapoursynth-wheel/*.whl -d _deps/vapoursynth-wheel/extracted
               export PKG_CONFIG_PATH=/workspace/_deps/vapoursynth-wheel/extracted/vapoursynth/pkgconfig:/opt/unrelated-pkgconfig
+              export KNLMEANSCL_VAPOURSYNTH_ROOT=/workspace/_deps/vapoursynth-wheel/extracted/vapoursynth
               export KNLMEANSCL_FORCE_BUILD=1
               export KNLMEANSCL_PLATFORM_TAG=manylinux_2_27_x86_64
               "$py" -m build --wheel --no-isolation --skip-dependency-check --outdir dist/wheels-linux

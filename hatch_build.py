@@ -240,14 +240,18 @@ def _configure_windows_build_env(env: dict[str, str]) -> dict[str, str]:
 def _configure_non_windows_build_env(env: dict[str, str], build_root: Path) -> dict[str, str]:
     # The VapourSynth wheel owns the API4 headers, library, and pkg-config
     # metadata. Prepend it while preserving a caller-provided search path.
-    try:
-        import vapoursynth
-    except ImportError as exc:
-        raise RuntimeError(
-            "native KNLMeansCL builds require VapourSynth in the PEP 517 build environment"
-        ) from exc
-
-    vapoursynth_dir = Path(vapoursynth.__file__).resolve().parent
+    wheel_root = env.get("KNLMEANSCL_VAPOURSYNTH_ROOT")
+    if wheel_root:
+        vapoursynth_dir = Path(wheel_root).resolve()
+    else:
+        try:
+            import vapoursynth
+        except ImportError as exc:
+            raise RuntimeError(
+                "native KNLMeansCL builds require VapourSynth in the PEP 517 build environment "
+                "or KNLMEANSCL_VAPOURSYNTH_ROOT must point at an extracted wheel's vapoursynth directory"
+            ) from exc
+        vapoursynth_dir = Path(vapoursynth.__file__).resolve().parent
     pkgconfig_dir = vapoursynth_dir / "pkgconfig"
     include_dir = vapoursynth_dir / "include"
     if not pkgconfig_dir.is_dir() or not include_dir.is_dir():
