@@ -4,20 +4,20 @@ requires = [
   "packaging>=24.0",
   "meson>=0.49",
   "ninja",
-  "VapourSynth>=77; platform_system == 'Windows'",
+  "VapourSynth>=79",
 ]
 build-backend = "hatchling.build"
 
 [project]
 name = "vapoursynth-knlm"
-version = "1.1.1"
+version = "1.1.2"
 description = "KNLMeansCL VapourSynth plugin packaged for pip installation"
 readme = "README.md"
 license = { text = "GPL-3.0-only" }
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [{ name = "KNLMeansCL contributors" }]
-dependencies = ["VapourSynth>=77"]
+dependencies = ["VapourSynth>=79"]
 
 [project.urls]
 "Source Code" = "https://github.com/RyougiKukoc/VapourSynth-KNLMeansCL-api4"
@@ -39,8 +39,7 @@ include = [
 [tool.hatch.build.targets.wheel]
 include = ["vapoursynth/plugins"]
 artifacts = [
-  "vapoursynth/plugins/**/*.dll",
-  "vapoursynth/plugins/**/manifest.vs",
+  "vapoursynth/plugins/**/*",
 ]
 
 [tool.hatch.build.targets.wheel.hooks.custom]

@@ -1,29 +1,42 @@
 #!/usr/bin/env python3
-"""Smoke test an installed vapoursynth-knlm wheel."""
+"""Smoke-test the installed KNLMeansCL wheel through VapourSynth autoload."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
-import site
 import sys
+from typing import Any
 
 
-NO_DEVICE_MARKERS = (
-    "no device",
-    "no opencl",
-    "cl_device_not_found",
-    "device not found",
-    "cl_platform_not_found",
-    "ocl_utils_unknown_error",
-    "oclutilsgetplaformdeviceids",
-    "oclutilsgetplatformdeviceids",
-)
+def no_opencl_device(message: str) -> bool:
+    lowered = message.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "no device",
+            "no opencl",
+            "cl_device_not_found",
+            "device not found",
+            "cl_platform_not_found",
+            "ocl_utils_unknown_error",
+            "oclutilsgetplaformdeviceids",
+            "oclutilsgetplatformdeviceids",
+        )
+    )
+
+
+def frame_hash(frame: Any) -> str:
+    digest = hashlib.sha256()
+    for plane in range(frame.format.num_planes):
+        digest.update(bytes(frame[plane]))
+    return digest.hexdigest()
 
 
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description="Smoke test an installed vapoursynth-knlm wheel.")
-    parser.add_argument("--exercise-filter", action="store_true", help="Try to render one frame if OpenCL is available.")
+    parser = argparse.ArgumentParser(description="Smoke-test an installed vapoursynth-knlm wheel.")
+    parser.add_argument("--require-opencl", action="store_true", help="Fail unless the GPU OpenCL frame request succeeds.")
     parser.add_argument("--json", action="store_true", help="Emit JSON result.")
     args = parser.parse_args(argv)
 
@@ -34,43 +47,45 @@ def main(argv: list[str]) -> int:
     if namespace is None or not hasattr(namespace, "KNLMeansCL"):
         raise RuntimeError("knlm plugin namespace was not autoloaded from the installed wheel")
 
-    result = {
-        "vapoursynth_module": vs.__file__,
-        "site_packages": site.getsitepackages(),
-        "namespace_loaded": True,
-        "callable_loaded": True,
-    }
+    src = core.std.BlankClip(width=64, height=48, format=vs.YUV420P8, length=5, color=[96, 128, 128])
+    invalid_rejected = False
+    try:
+        namespace.KNLMeansCL(src, h=0)
+    except vs.Error:
+        invalid_rejected = True
+    if not invalid_rejected:
+        raise RuntimeError("KNLMeansCL accepted invalid h=0")
 
-    if args.exercise_filter:
-        clip = core.std.BlankClip(format=vs.YUV420P8, width=64, height=48, length=5, color=[96, 128, 128])
-        try:
-            out = namespace.KNLMeansCL(clip, d=1, a=1, s=1, h=1.2)
-            frame = out.get_frame(2)
-            stats = dict(core.std.PlaneStats(out).get_frame(2).props)
-            result.update(
-                {
-                    "exercise_filter": True,
-                    "exercise_skipped": False,
-                    "width": frame.width,
-                    "height": frame.height,
-                    "format": frame.format.name,
-                    "plane_stats_average": float(stats["PlaneStatsAverage"]),
-                    "plane_stats_min": float(stats["PlaneStatsMin"]),
-                    "plane_stats_max": float(stats["PlaneStatsMax"]),
-                }
-            )
-        except Exception as exc:
-            message = str(exc)
-            if any(marker in message.lower() for marker in NO_DEVICE_MARKERS):
-                result.update(
-                    {
-                        "exercise_filter": True,
-                        "exercise_skipped": True,
-                        "exercise_skip_reason": message,
-                    }
-                )
-            else:
-                raise
+    result: dict[str, Any] = {
+        "vapoursynth_module": vs.__file__,
+        "namespace_loaded": True,
+        "invalid_h_zero_rejected": True,
+        "opencl_frame_executed": False,
+    }
+    try:
+        out = namespace.KNLMeansCL(src, d=1, a=1, s=1, h=1.2, device_type="gpu")
+        frames = {number: out.get_frame(number) for number in (0, 2, 4)}
+        stats = dict(core.std.PlaneStats(out).get_frame(2).props)
+    except vs.Error as exc:
+        if not no_opencl_device(str(exc)):
+            raise
+        result["opencl_unavailable_reason"] = str(exc)
+        if args.require_opencl:
+            raise RuntimeError(f"OpenCL GPU frame request did not execute: {exc}") from exc
+    else:
+        result.update(
+            {
+                "opencl_frame_executed": True,
+                "width": frames[2].width,
+                "height": frames[2].height,
+                "format": frames[2].format.name,
+                "frames": out.num_frames,
+                "frame_hashes": {number: frame_hash(frame) for number, frame in frames.items()},
+                "plane_stats_average": float(stats["PlaneStatsAverage"]),
+                "plane_stats_min": float(stats["PlaneStatsMin"]),
+                "plane_stats_max": float(stats["PlaneStatsMax"]),
+            }
+        )
 
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))

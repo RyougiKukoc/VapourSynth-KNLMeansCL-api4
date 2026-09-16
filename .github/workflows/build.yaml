@@ -1,4 +1,4 @@
-name: Build Windows MSYS2
+name: Build release assets
 
 on:
   push:
@@ -8,15 +8,12 @@ on:
       - "v*"
   pull_request:
   workflow_dispatch:
-  release:
-    types:
-      - published
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  windows-ucrt64:
     name: Build Windows UCRT64
     runs-on: windows-2025
 
@@ -31,13 +28,13 @@ jobs:
       - name: Set up CPython
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Install Python build tools
         shell: cmd
         run: >-
           "%pythonLocation%\python.exe" -m pip install --upgrade pip
-          build hatchling packaging meson ninja VapourSynth==77
+          build hatchling packaging meson ninja VapourSynth==79
 
       - name: Set up MSYS2
         uses: msys2/setup-msys2@v2
@@ -58,15 +55,13 @@ jobs:
         run: >-
           "%pythonLocation%\python.exe" tools\ci_prepare_vapoursynth_pc.py
 
-      - name: Meson setup
+      - name: Meson setup and compile
         run: |
           export PKG_CONFIG_PATH="$(cygpath -u "$GITHUB_WORKSPACE")/_ci/pkgconfig:/ucrt64/lib/pkgconfig"
           meson setup builddir --backend ninja --buildtype release
+          ninja -C builddir -v
 
-      - name: Meson compile
-        run: ninja -C builddir -v
-
-      - name: Package artifact
+      - name: Package and smoke test Windows plugin
         shell: cmd
         run: >-
           set "PATH=%RUNNER_TEMP%\msys64\ucrt64\bin;%RUNNER_TEMP%\msys64\usr\bin;%PATH%" &&
@@ -76,96 +71,208 @@ jobs:
           --search-dir "%RUNNER_TEMP%\msys64\ucrt64\bin"
           --search-dir "%RUNNER_TEMP%\msys64\usr\bin"
           --objdump "%RUNNER_TEMP%\msys64\ucrt64\bin\objdump.exe"
-          --clean
-
-      - name: Smoke-load artifact
-        shell: cmd
-        run: >-
+          --clean &&
           "%pythonLocation%\python.exe" tools\smoke_load_artifact.py
           --artifact-dir dist\msys2-ucrt64
-          --exercise-filter
+          --json
 
-      - name: Smoke-load artifact through manifest autoload
-        shell: cmd
-        run: >-
-          "%pythonLocation%\python.exe" tools\smoke_load_artifact.py
-          --artifact-dir dist\msys2-ucrt64
-          --autoload
-          --exercise-filter
-
-      - name: Pack release zip
+      - name: Pack and smoke test Windows release zip
         shell: cmd
         run: >-
           "%pythonLocation%\python.exe" tools\package_plugin_zip.py
           --input-dir dist\msys2-ucrt64
-          --output dist\knlmeanscl-msys2-ucrt64.zip
-
-      - name: Smoke-load release zip
-        shell: cmd
-        run: >-
+          --output dist\knlmeanscl-msys2-ucrt64.zip &&
           "%pythonLocation%\python.exe" tools\smoke_load_artifact.py
           --artifact-zip dist\knlmeanscl-msys2-ucrt64.zip
-          --exercise-filter
+          --json
 
-      - name: Build wheel from local prebuilt package
+      - name: Build wheel from local Windows release payload
         shell: cmd
         env:
           KNLMEANSCL_PREBUILT_URL: ${{ github.workspace }}\dist\knlmeanscl-msys2-ucrt64.zip
         run: >-
           "%pythonLocation%\python.exe" -m build --wheel --no-isolation --outdir dist\wheels
 
-      - name: Install built wheel
+      - name: Install and smoke test Windows wheel
         shell: cmd
         run: >-
-          for %%I in (dist\wheels\*.whl) do "%pythonLocation%\python.exe" -m pip install --force-reinstall "%%~fI"
+          for %%I in (dist\wheels\*.whl) do "%pythonLocation%\python.exe" -m pip install --force-reinstall "%%~fI" &&
+          "%pythonLocation%\python.exe" tools\ci_smoke_installed_wheel.py --json
 
-      - name: Smoke test installed wheel
-        shell: cmd
-        run: >-
-          "%pythonLocation%\python.exe" tools\ci_smoke_installed_wheel.py --exercise-filter
-
-      - name: Smoke test source install with prebuilt release asset
+      - name: Smoke test Windows source install with local release payload
         shell: cmd
         env:
           KNLMEANSCL_PREBUILT_URL: ${{ github.workspace }}\dist\knlmeanscl-msys2-ucrt64.zip
         run: |
           "%pythonLocation%\python.exe" -m pip uninstall -y vapoursynth-knlm
           "%pythonLocation%\python.exe" -m pip install --force-reinstall --no-deps --no-build-isolation -v .
-          "%pythonLocation%\python.exe" tools\ci_smoke_installed_wheel.py --exercise-filter
+          "%pythonLocation%\python.exe" tools\ci_smoke_installed_wheel.py --json
 
-      - name: Upload plugin package
+      - name: Upload Windows release assets
         uses: actions/upload-artifact@v7
         with:
-          name: knlmeanscl-msys2-ucrt64
-          path: dist/msys2-ucrt64
-
-      - name: Upload release zip artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: knlmeanscl-release-assets
+          name: knlmeanscl-release-assets-windows
           path: |
             dist/knlmeanscl-msys2-ucrt64.zip
             dist/wheels/*.whl
+          if-no-files-found: error
 
-      - name: Upload wheel artifact
+  linux-x86_64:
+    name: Build Linux x86_64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build Linux wheel and release payload in CentOS 7
+        shell: bash
+        run: |
+          set -euxo pipefail
+          docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
+            quay.io/pypa/manylinux2014_x86_64 bash -c '
+              set -ex
+              yum -y install boost-devel ocl-icd-devel
+              py=/opt/python/cp313-cp313/bin/python
+              source /opt/rh/devtoolset-10/enable
+              set -u
+              export PATH=/opt/python/cp313-cp313/bin:$PATH
+              "$py" -m pip install --upgrade pip
+              "$py" -m pip install build hatchling packaging meson ninja
+              mkdir -p _deps/vapoursynth-wheel dist/wheels-linux dist/linux-x86_64
+              "$py" -m pip download --only-binary=:all: --no-deps \
+                --platform manylinux_2_27_x86_64 --implementation cp --python-version 313 --abi abi3 \
+                VapourSynth -d _deps/vapoursynth-wheel
+              unzip -q _deps/vapoursynth-wheel/*.whl -d _deps/vapoursynth-wheel/extracted
+              export PKG_CONFIG_PATH=/workspace/_deps/vapoursynth-wheel/extracted/vapoursynth/pkgconfig:/opt/unrelated-pkgconfig
+              export KNLMEANSCL_FORCE_BUILD=1
+              export KNLMEANSCL_PLATFORM_TAG=manylinux_2_27_x86_64
+              "$py" -m build --wheel --no-isolation --skip-dependency-check --outdir dist/wheels-linux
+              wheel=$(find dist/wheels-linux -name "*.whl" -print -quit)
+              test -n "$wheel"
+              unzip -q "$wheel" "vapoursynth/plugins/knlmeanscl/*" -d dist/linux-x86_64/extracted
+              mv dist/linux-x86_64/extracted/vapoursynth/plugins/knlmeanscl dist/linux-x86_64/knlmeanscl
+              mkdir -p dist/release-assets-linux
+              "$py" tools/package_plugin_zip.py --input-dir dist/linux-x86_64 --output dist/release-assets-linux/knlmeanscl-linux-x86_64.zip
+              cp "$wheel" dist/release-assets-linux/
+              readelf -d dist/linux-x86_64/knlmeanscl/knlmeanscl.so
+              readelf --version-info dist/linux-x86_64/knlmeanscl/knlmeanscl.so
+            '
+
+      - name: Check Linux payload ABI and layout
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python tools/check_package_layout.py \
+            dist/release-assets-linux/knlmeanscl-linux-x86_64.zip \
+            --plugin knlmeanscl.so \
+            --required libOpenCL.so.1 \
+          test -f dist/linux-x86_64/knlmeanscl/libOpenCL.so.1
+          test -f dist/linux-x86_64/knlmeanscl/libstdc++.so.6
+          test -f dist/linux-x86_64/knlmeanscl/libgcc_s.so.1
+          find dist/linux-x86_64/knlmeanscl -name 'libboost_filesystem.so*' -print -quit | grep -q .
+          readelf -d dist/linux-x86_64/knlmeanscl/knlmeanscl.so | grep -E '(RPATH|RUNPATH).*\$ORIGIN'
+          ! readelf --version-info dist/linux-x86_64/knlmeanscl/knlmeanscl.so | grep -Eq 'GLIBC_2\.(1[89]|[2-9][0-9])'
+          wheel=$(find dist/release-assets-linux -name '*.whl' -print -quit)
+          case "$wheel" in *manylinux_2_27_x86_64.whl) ;; *) echo "wrong wheel tag: $wheel"; exit 1;; esac
+
+      - name: Upload Linux release assets
         uses: actions/upload-artifact@v7
         with:
-          name: vapoursynth-knlm-wheel-win64
-          path: dist/wheels/*.whl
+          name: knlmeanscl-release-assets-linux
+          path: dist/release-assets-linux
+          if-no-files-found: error
 
-      - name: Upload release asset
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
-        shell: powershell
+  linux-runtime-smoke:
+    name: Smoke Linux release payload
+    needs: linux-x86_64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download Linux release assets
+        uses: actions/download-artifact@v7
+        with:
+          name: knlmeanscl-release-assets-linux
+          path: dist/release-assets-linux
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install R79 and native fallback dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libboost-filesystem-dev libboost-system-dev ocl-icd-opencl-dev
+          python -m pip install --upgrade pip build hatchling packaging meson ninja VapourSynth==79
+
+      - name: Explicitly smoke test Linux release plugin
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python tools/smoke_load_artifact.py --artifact-zip dist/release-assets-linux/knlmeanscl-linux-x86_64.zip --json
+
+      - name: Install and smoke test Linux wheel
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python -m pip install --force-reinstall --no-deps dist/release-assets-linux/*.whl
+          python tools/ci_smoke_installed_wheel.py --json
+
+      - name: Smoke test source install with local Linux release payload
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python -m pip uninstall -y vapoursynth-knlm
+          export KNLMEANSCL_PREBUILT_URL="$GITHUB_WORKSPACE/dist/release-assets-linux/knlmeanscl-linux-x86_64.zip"
+          python -m pip install --force-reinstall --no-deps -v . 2>&1 | tee /tmp/knlmeanscl-prebuilt.log
+          grep -F 'using prebuilt release asset' /tmp/knlmeanscl-prebuilt.log
+          python tools/ci_smoke_installed_wheel.py --json
+
+      - name: Force and smoke test Linux native fallback
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python -m pip uninstall -y vapoursynth-knlm
+          export KNLMEANSCL_FORCE_BUILD=1
+          export PKG_CONFIG_PATH=/opt/unrelated-pkgconfig
+          python -m pip install --force-reinstall --no-deps -v . 2>&1 | tee /tmp/knlmeanscl-force-build.log
+          grep -F 'skipping prebuilt asset because KNLMEANSCL_FORCE_BUILD is set' /tmp/knlmeanscl-force-build.log
+          python tools/ci_smoke_installed_wheel.py --json
+
+  publish-release:
+    name: Publish release assets
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows-ucrt64, linux-runtime-smoke]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all release assets
+        uses: actions/download-artifact@v7
+        with:
+          pattern: knlmeanscl-release-assets-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create Release and verify exact asset inventory
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
         run: |
-          $tag = $env:RELEASE_TAG
-          $assets = @("dist\knlmeanscl-msys2-ucrt64.zip")
-          $assets += Get-ChildItem dist\wheels\*.whl | Select-Object -ExpandProperty FullName
-          & cmd.exe /d /c "gh release view $tag --repo $env:GITHUB_REPOSITORY >NUL 2>NUL"
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY
-          } else {
-            gh release create $tag $assets --title $tag --notes "Automated MSYS2/UCRT64 build." --repo $env:GITHUB_REPOSITORY
-          }
+          set -euxo pipefail
+          tag="$GITHUB_REF_NAME"
+          find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" release-assets/* --title "$tag" --notes "Automated Windows and Linux API4 release." --repo "$GITHUB_REPOSITORY"
+          fi
+          expected=$(find release-assets -maxdepth 1 -type f -printf '%f\n' | sort)
+          actual=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | sort)
+          test "$expected" = "$actual"
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,assets

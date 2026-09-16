@@ -7,21 +7,29 @@ For end user **KNLMeansCL** is a plugin for **[AviSynth](http://avisynth.nl)**, 
 
 **KNLMeansCL** is available under the **[GNU GPL v3 license](https://github.com/Khanattila/KNLMeansCL/blob/master/LICENSE)**.
 
-## VapourSynth API4 Windows install
+## VapourSynth API4 install
 
-This fork can be installed as a VapourSynth API4 plugin package on Windows:
+This fork can be installed as a VapourSynth API4 plugin package on Windows or
+Linux x86_64:
 
 ```powershell
 pip install "vapoursynth-knlm @ git+https://github.com/RyougiKukoc/VapourSynth-KNLMeansCL-api4.git"
 ```
 
-The VCS build first tries to reuse the tested release payload:
+The VCS build first tries to reuse the tested platform Release payload:
 
 ```text
-https://github.com/RyougiKukoc/VapourSynth-KNLMeansCL-api4/releases/download/v1.1.1/knlmeanscl-msys2-ucrt64.zip
+https://github.com/RyougiKukoc/VapourSynth-KNLMeansCL-api4/releases/download/v1.1.2/knlmeanscl-msys2-ucrt64.zip
+https://github.com/RyougiKukoc/VapourSynth-KNLMeansCL-api4/releases/download/v1.1.2/knlmeanscl-linux-x86_64.zip
 ```
 
-If the release asset is unavailable, the build hook falls back to a local
-MSYS2/UCRT64 Meson build. Set `KNLMEANSCL_FORCE_BUILD=1` to force the local
-build path, or `KNLMEANSCL_PREBUILT_URL=path-or-url-to-zip` to test a specific
-prebuilt package.
+If the matching Release asset is unavailable, the build hook runs a native
+Meson build. Linux source builds discover the installed VapourSynth wheel's
+API4 headers and pkg-config metadata; macOS has no prebuilt asset and therefore
+uses the same native fallback. Set `KNLMEANSCL_FORCE_BUILD=1` to force a local
+build, or `KNLMEANSCL_PREBUILT_URL=path-or-url-to-zip` to test a specific
+payload.
+
+KNLMeansCL requires a working vendor OpenCL ICD to render frames. The Linux
+payload includes the OpenCL loader, but an NVIDIA, AMD, Intel, or other device
+ICD remains a host driver requirement.

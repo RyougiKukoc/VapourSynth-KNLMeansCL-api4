@@ -1,3 +1,8 @@
+v1.1.2 [20260916 (vpy-api4)]
+   - Add Linux x86_64 Release-backed VCS packaging for VapourSynth R79.
+   - Bundle the Linux OpenCL loader and native runtime closure beside the API4 plugin.
+   - Add explicit GPU-frame verification and platform-native source-build fallbacks.
+
 v1.1.1e [20201112 (pinterf)]
    - Update internal VERSION with 'e' shown in 'info' pages
    - New: Add (debug) parameter: 'mode_9_to_15bits' (integer). Values 0, 1 (default), 2
