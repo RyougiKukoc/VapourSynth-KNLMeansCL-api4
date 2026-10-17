@@ -1,3 +1,9 @@
+# Deprecated
+
+This repository is deprecated. Please use [vapoursynth-api4-wheels](https://github.com/AliceTeaParty/vapoursynth-api4-wheels).
+
+---
+
 # KNLMeansCL
 [![GitHub release](https://img.shields.io/github/release/Khanattila/KNLMeansCL.svg)](https://github.com/Khanattila/KNLMeansCL/releases) 
 
